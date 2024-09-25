@@ -51,9 +51,7 @@ let videoTitle = "";
 const uploadQueue = new Bull("uploadQueue", { redis: redisOptions });
 
 uploadQueue.process("title", async (payload, done) => {
-  console.log("Setting videoTitle to payload.data.title");
   videoTitle = payload.data.title;
-
   done();
 });
 
@@ -64,11 +62,6 @@ uploadQueue.process("video_part", async (payload, done) => {
   };
 
   const hash = createHash("md5").update(payload.data.Body).digest("base64");
-
-  console.log("data sent initially hash", payload.data.ContentMD5);
-  console.log("received data hash", hash);
-
-  console.log(payload.data.PartNumber);
   payloadDataArray.push(payload.data);
   done();
 });
@@ -82,7 +75,6 @@ uploadQueue.process("last_video_part", async (payload, done) => {
   const cloudfrontDistribution = process.env.CLOUDFRONT_DISTRIBUTION;
   const fileName = payload.data.Key;
 
-  console.log("last payload >>> ", payload.data.PartNumber);
   payloadDataArray.push(payload.data);
 
   const promises = payloadDataArray.map((payload) => {
@@ -93,7 +85,6 @@ uploadQueue.process("last_video_part", async (payload, done) => {
         .then((res) => {
           try {
             if (res.ETag) {
-              console.log(payload);
               Parts.push({
                 ETag: res.ETag,
                 PartNumber: payload.PartNumber,
@@ -101,7 +92,7 @@ uploadQueue.process("last_video_part", async (payload, done) => {
               resolve();
             }
           } catch (error) {
-            console.log("Error uploading part: ", error);
+            console.error("Error uploading part: ", error);
             reject(error);
           }
         })
@@ -112,15 +103,12 @@ uploadQueue.process("last_video_part", async (payload, done) => {
   await Promise.all(promises)
     .then(async () => {
       Parts.sort((a, b) => a.PartNumber - b.PartNumber);
-      console.log("promise.all() complete");
       const listPartsCommand = new ListPartsCommand({
         Bucket: bucketName,
         Key: payload.data.Key,
         UploadId: payload.data.UploadId,
       });
       const partsData = await s3v3.send(listPartsCommand);
-      console.log(partsData);
-      console.log(Parts);
 
       const cmpucParams = {
         Bucket: payload.data.Bucket,
@@ -139,7 +127,6 @@ uploadQueue.process("last_video_part", async (payload, done) => {
         const completion = await s3v3
           .send(completeMultipartUploadCommand)
           .then(async (res) => {
-            console.log("completion >>> ", res);
             await fetch(
               "https://z89m6eihob.execute-api.us-east-1.amazonaws.com/dev",
               {
@@ -150,10 +137,7 @@ uploadQueue.process("last_video_part", async (payload, done) => {
                 body: JSON.stringify({ fileName }),
               }
             ).then(async (res) => {
-              console.log("GOOOOOOD");
-
               const response = await res.json();
-              console.log(response);
             });
             await prisma.video.create({
               data: {
@@ -162,7 +146,6 @@ uploadQueue.process("last_video_part", async (payload, done) => {
               },
             });
           });
-        console.log("yaay!");
         done();
       } catch (error) {
         console.error("Error in CompleteMultipartUploadCommand", error);
