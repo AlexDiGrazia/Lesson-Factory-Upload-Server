@@ -58,7 +58,7 @@ uploadQueue.process("title", async (payload, done) => {
 uploadQueue.process("video_part", async (payload, done) => {
   payload.data = {
     ...payload.data,
-    Body: Buffer.from(payload.data.Body.data),
+    Body: Buffer.from(payload.data.Body.data), // Update payload data with real Buffer data instead of Stringified video data
   };
 
   const hash = createHash("md5").update(payload.data.Body).digest("base64");
@@ -69,7 +69,7 @@ uploadQueue.process("video_part", async (payload, done) => {
 uploadQueue.process("last_video_part", async (payload, done) => {
   payload.data = {
     ...payload.data,
-    Body: Buffer.from(payload.data.Body.data),
+    Body: Buffer.from(payload.data.Body.data), // Update payload data with real Buffer data instead of Stringified video data
   };
 
   const cloudfrontDistribution = process.env.CLOUDFRONT_DISTRIBUTION;
@@ -128,7 +128,7 @@ uploadQueue.process("last_video_part", async (payload, done) => {
           .send(completeMultipartUploadCommand)
           .then(async (res) => {
             await fetch(
-              "https://z89m6eihob.execute-api.us-east-1.amazonaws.com/dev",
+              "https://z89m6eihob.execute-api.us-east-1.amazonaws.com/dev", //api gateway trigger of Lambda function, sending filename through api gateway endpoint
               {
                 method: "POST",
                 headers: {
