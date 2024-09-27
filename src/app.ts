@@ -9,7 +9,6 @@ import {
   ListPartsCommand,
 } from "@aws-sdk/client-s3";
 import { Part, PayloadData } from "../types";
-import { createHash } from "crypto";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { prisma } from "../prisma/db.setup";
 
@@ -61,7 +60,6 @@ uploadQueue.process("video_part", async (payload, done) => {
     Body: Buffer.from(payload.data.Body.data), // Update payload data with real Buffer data instead of Stringified video data
   };
 
-  const hash = createHash("md5").update(payload.data.Body).digest("base64");
   payloadDataArray.push(payload.data);
   done();
 });
@@ -72,7 +70,6 @@ uploadQueue.process("last_video_part", async (payload, done) => {
     Body: Buffer.from(payload.data.Body.data), // Update payload data with real Buffer data instead of Stringified video data
   };
 
-  const cloudfrontDistribution = process.env.CLOUDFRONT_DISTRIBUTION;
   const fileName = payload.data.Key;
 
   payloadDataArray.push(payload.data);
@@ -108,7 +105,6 @@ uploadQueue.process("last_video_part", async (payload, done) => {
         Key: payload.data.Key,
         UploadId: payload.data.UploadId,
       });
-      const partsData = await s3v3.send(listPartsCommand);
 
       const cmpucParams = {
         Bucket: payload.data.Bucket,
