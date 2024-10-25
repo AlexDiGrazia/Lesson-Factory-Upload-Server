@@ -60,6 +60,7 @@ uploadQueue.process("video_part", async (payload, done) => {
     Body: Buffer.from(payload.data.Body.data), // Update payload data with real Buffer data instead of Stringified video data
   };
 
+  console.log(payload.data);
   payloadDataArray.push(payload.data);
   done();
 });
@@ -82,6 +83,7 @@ uploadQueue.process("last_video_part", async (payload, done) => {
         .then((res) => {
           try {
             if (res.ETag) {
+              console.log(res.ETag);
               Parts.push({
                 ETag: res.ETag,
                 PartNumber: payload.PartNumber,
