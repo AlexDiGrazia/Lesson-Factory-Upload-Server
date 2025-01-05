@@ -25,3 +25,5 @@ commands.txt
 *.sw?
 
 .env
+
+.VSCodeCounter/
