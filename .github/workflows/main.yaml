@@ -1,0 +1,90 @@
+name: Deploy
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build-api:
+    name: Build API Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to AWS ECR
+        id: login-aws-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push API Image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-aws-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.API_IMAGE_REPO }}
+          IMAGE_TAG: latest
+        run: |
+          echo ${{ steps.login-aws-ecr.outputs.registry }}
+          echo ${{ secrets.API_IMAGE_REPO }}
+          docker build --build-arg DATABASE_URL=${{ secrets.DATABASE_URL }} -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  pull-api:
+    name: Pull API onto EC2
+    runs-on: ubuntu-latest
+    needs: build-api
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{secrets.AWS_REGION}}
+      - name: Login to AWS ECR
+        id: login-aws-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Pull and Run Docker Image From ECR
+        run: |
+          docker_pull_command_id=$(aws ssm send-command \
+          --document-name "AWS-RunShellScript" \
+          --targets "Key=instanceIds,Values=${{ secrets.INSTANCE_ID_1 }},${{ secrets.INSTANCE_ID_2 }}" \
+          --comment "Pull Docker image onto EC2" \
+          --parameters commands='[
+            "aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin ${{ steps.login-aws-ecr.outputs.registry }}",
+            "docker rmi $(docker images -q) -f",
+            "docker stop ${{ steps.login-aws-ecr.outputs.registry }}/${{secrets.API_IMAGE_REPO}}:latest",
+            "docker pull ${{ steps.login-aws-ecr.outputs.registry }}/${{secrets.API_IMAGE_REPO}}:latest",
+          ]' --query "Command.CommandId" --output text)
+
+          echo "docker_pull_command_id=$docker_pull_command_id" >> $GITHUB_ENV
+      - name: Wait for Docker Commands to Complete on Instance 1
+        run: |
+          aws ssm wait command-executed \
+          --command-id ${{ env.docker_pull_command_id }} \
+          --instance-id ${{ secrets.INSTANCE_ID_1 }} || true \
+          --debug
+      - name: Wait for Docker Commands to Complete on Instance 2
+        run: |
+          aws ssm wait command-executed \
+          --command-id ${{ env.docker_pull_command_id }} \
+          --instance-id ${{ secrets.INSTANCE_ID_2 }} || true \
+          --debug
+      - name: Check Command Status
+        run: |
+          docker_pull_commandOutput=$(aws ssm list-commands --command-id ${{ env.docker_pull_command_id }} --output json)
+          echo $docker_pull_commandOutput | jq
+
+          docker_pull_command_status=$(aws ssm list-commands --command-id ${{ env.docker_pull_command_id }} --query "Commands[0].StatusDetails" --output text)
+          echo $docker_pull_command_status
+
+          if [ $docker_pull_command_status == "Success" ]; then
+            echo "Docker Image pulled SUCCESSFULLY onto EC2"
+          else
+            echo "Docker image FAILED to pull onto EC2"
+            exit 1
+          fi

@@ -2,13 +2,41 @@ generator client {
   provider = "prisma-client-js"
 }
 
+
 datasource db {
-  provider = "postgresql"
+  provider = "postgres"
   url      = env("DATABASE_URL")
 }
-
+ 
 model Video {
-  id       Int    @id @default(autoincrement())
+  id Int @id @default(autoincrement())
   filename String @unique
-  title    String
+  title String
+  videoPurchase VideoPurchase[]
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  email String @unique
+  password String
+  role Role @default(USER)
+  emailVerified Boolean @default(false)
+  subscribed Boolean @default(false)
+  stripeCustomerId String? @unique
+  videoPurchase VideoPurchase[]
+}
+
+model VideoPurchase {
+id Int @id @default(autoincrement())
+user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+userId Int
+video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+videoId Int
+
+@@unique([userId, videoId])
+}
+
+enum Role {
+  USER
+  ADMIN
 }
