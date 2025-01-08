@@ -14,6 +14,11 @@ import { prisma } from "../prisma/db.setup";
 
 const app = express();
 app.use(cors);
+
+app.get("/", async (req, res) => {
+  res.status(200).send("Index endpoint effective you guys!!!");
+});
+
 const port = 3001;
 dotenv.config();
 const {
